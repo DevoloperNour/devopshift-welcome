@@ -1,26 +1,38 @@
-FROM python:3.12.1-slim
+# Build stage
+FROM python:3.9-slim AS build
 
-WORKDIR /
+# Set working directory
+WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip3 install -vvv --require-hashes --no-cache-dir -r requirements.txt
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY test-requirements.txt ./
-RUN pip3 install --no-cache-dir --require-hashes -r test-requirements.txt
+# Copy application code
+COPY . .
 
-COPY productpage.py /opt/microservices/
-COPY tests/unit/* /opt/microservices/
-COPY templates /opt/microservices/templates
-COPY static /opt/microservices/static
-COPY requirements.txt /opt/microservices/
+# Test stage
+FROM build AS test
 
-ARG flood_factor
-ENV FLOOD_FACTOR ${flood_factor:-0}
+# Install testing dependencies
+RUN pip install --no-cache-dir pytest
 
-EXPOSE 9080
-WORKDIR /opt/microservices
-RUN python -m unittest discover
+# Run tests
+COPY --from=build /app /app
+WORKDIR /app
+RUN pytest
 
-CMD ["gunicorn", "-b", "[::]:9080", "productpage:app", "-w", "8", "--keep-alive", "2", "-k", "gevent"]
+# Run stage
+FROM python:3.9-slim AS run
 
-USER 1000
+# Set working directory
+WORKDIR /app
+
+# Copy built application from build stage
+COPY --from=build /app /app
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Run the application
+CMD ["python", "app.py"]
