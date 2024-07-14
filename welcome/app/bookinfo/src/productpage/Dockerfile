@@ -1,33 +1,26 @@
-# Multi-stage Dockerfile
+FROM python:3.12.1-slim
 
-# Stage 1: Build
-FROM python:3.9-slim AS build
+WORKDIR /
 
-WORKDIR /app
+COPY requirements.txt ./
+RUN pip3 install -vvv --require-hashes --no-cache-dir -r requirements.txt
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY test-requirements.txt ./
+RUN pip3 install --no-cache-dir --require-hashes -r test-requirements.txt
 
-# Copy the application code
-COPY src/ .
+COPY productpage.py /opt/microservices/
+COPY tests/unit/* /opt/microservices/
+COPY templates /opt/microservices/templates
+COPY static /opt/microservices/static
+COPY requirements.txt /opt/microservices/
 
-# Stage 2: Test
-FROM build AS test
+ARG flood_factor
+ENV FLOOD_FACTOR ${flood_factor:-0}
 
-# Run tests (replace with your test command)
-RUN pytest > test_results.log || true
+EXPOSE 9080
+WORKDIR /opt/microservices
+RUN python -m unittest discover
 
-# Stage 3: Run
-FROM python:3.9-slim AS run
+CMD ["gunicorn", "-b", "[::]:9080", "productpage:app", "-w", "8", "--keep-alive", "2", "-k", "gevent"]
 
-WORKDIR /app
-
-# Copy from the build stage
-COPY --from=build /app .
-
-# Expose the application port
-EXPOSE 8080
-
-# Command to run the application
-CMD ["python", "app.py"]
+USER 1000
